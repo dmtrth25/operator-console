@@ -2,15 +2,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo } from 'react'
 import { useCasesFilters } from '../state/casesFilters'
 import { useDebouncedValue } from '../lib/useDebouncedValue'
-
-type Case = { id: string; title: string; status: 'open' | 'closed' }
-
-const DEMO_CASES: Case[] = [
-  { id: '1', title: 'GPS drift report', status: 'open' },
-  { id: '2', title: 'Device crash loop', status: 'open' },
-  { id: '3', title: 'Wrong speed limit', status: 'closed' },
-  { id: '4', title: 'Map tile missing', status: 'open' },
-]
+import { trpc } from '../lib/trpc'
 
 export function CasesListPage() {
   const [params, setParams] = useSearchParams()
@@ -36,13 +28,21 @@ export function CasesListPage() {
     setParams(next, { replace: true })
   }, [q, status, setParams])
 
-  const filtered = useMemo(() => {
-    return DEMO_CASES.filter(c => {
-      const matchQ = debouncedQ ? c.title.toLowerCase().includes(debouncedQ.toLowerCase()) : true
-      const matchStatus = status === 'all' ? true : c.status === status
-      return matchQ && matchStatus
-    })
-  }, [debouncedQ, status])
+  const input = useMemo(
+    () => ({
+      q: debouncedQ ? debouncedQ : undefined,
+      status: status === 'all' ? undefined : status,
+    }),
+    [debouncedQ, status],
+  )
+
+  const {
+    data: filtered = [],
+    isLoading,
+    error,
+  } = trpc.casesList.useQuery(input, {
+    placeholderData: prev => prev,
+  })
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -50,7 +50,7 @@ export function CasesListPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Cases</h1>
-            <p className="text-sm text-gray-600">Search + filters (Zustand + URL sync)</p>
+            <p className="text-sm text-gray-600">Search + filters (Zustand + URL sync + tRPC)</p>
           </div>
           <Link className="text-blue-600 hover:underline" to="/admin">
             Admin
@@ -75,8 +75,12 @@ export function CasesListPage() {
             <option value="closed">Closed</option>
           </select>
 
-          <div className="text-sm text-gray-600 sm:ml-auto">{filtered.length} shown</div>
+          <div className="text-sm text-gray-600 sm:ml-auto">
+            {isLoading ? 'Loading…' : `${filtered.length} shown`}
+          </div>
         </div>
+
+        {error && <div className="text-sm text-red-600">{error.message}</div>}
 
         <div className="rounded-xl border bg-white">
           <div className="p-3 border-b font-medium">Results</div>
@@ -89,7 +93,9 @@ export function CasesListPage() {
                 <span className="text-sm text-gray-600">{c.status}</span>
               </li>
             ))}
-            {filtered.length === 0 && <li className="p-6 text-gray-600">No results</li>}
+            {!isLoading && filtered.length === 0 && (
+              <li className="p-6 text-gray-600">No results</li>
+            )}
           </ul>
         </div>
       </div>
